@@ -127,7 +127,14 @@ const STYLE = `
   .msg { color: var(--sp-muted); padding: 8px 0; }
   :host { min-width: 0; max-width: 100%; }
   .wrap > * { min-width: 0; max-width: 100%; }
+  /* width:0 + min-width:100% stops the many tabs from widening the card; the row just fills its container. */
+  .tabrow { display: flex; align-items: center; gap: 4px; width: 0; min-width: 100%; }
+  .tabrow .arrow {
+    flex: none; width: 32px; height: 32px; border: none; border-radius: 50%; cursor: pointer;
+    background: var(--sp-surface); color: var(--primary-text-color); font-size: 20px; line-height: 1; padding: 0;
+  }
   .tabs {
+    flex: 1; min-width: 0; position: relative;
     display: flex; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain;
     scrollbar-width: thin; padding-bottom: 6px; -webkit-overflow-scrolling: touch;
   }
@@ -406,8 +413,23 @@ class ScenePresetsMoreInfo extends HTMLElement {
         },
         { passive: false }
       );
-      wrap.appendChild(bar);
-      requestAnimationFrame(() => bar.querySelector("[selected]")?.scrollIntoView({ block: "nearest", inline: "center" }));
+      // Arrow buttons for mouse users (overlay scrollbars are often invisible).
+      const arrow = (dir, glyph) => {
+        const a = document.createElement("button");
+        a.className = "arrow";
+        a.textContent = glyph;
+        a.setAttribute("aria-label", dir < 0 ? "Scroll tabs left" : "Scroll tabs right");
+        a.addEventListener("click", () => bar.scrollBy({ left: dir * bar.clientWidth * 0.7, behavior: "smooth" }));
+        return a;
+      };
+      const row = document.createElement("div");
+      row.className = "tabrow";
+      row.append(arrow(-1, "‹"), bar, arrow(1, "›"));
+      wrap.appendChild(row);
+      requestAnimationFrame(() => {
+        const sel = bar.querySelector("[selected]");
+        if (sel) bar.scrollLeft = sel.offsetLeft - (bar.clientWidth - sel.offsetWidth) / 2;
+      });
     }
 
     this._tiles = new Map();
