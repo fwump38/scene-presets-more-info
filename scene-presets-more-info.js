@@ -125,6 +125,13 @@ const STYLE = `
     font: inherit; cursor: pointer;
   }
   .msg { color: var(--sp-muted); padding: 8px 0; }
+  .tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .tabs button {
+    flex: none; border: none; font: inherit; cursor: pointer; white-space: nowrap;
+    padding: 8px 14px; border-radius: 999px;
+    background: var(--sp-surface); color: var(--primary-text-color);
+  }
+  .tabs button[selected] { background: var(--primary-color); color: var(--text-primary-color, #fff); }
   .hidden { display: none !important; }
 `;
 
@@ -158,6 +165,25 @@ class ScenePresetsMoreInfo extends HTMLElement {
   }
   get entityId() {
     return this._entityId;
+  }
+
+  set areaId(id) {
+    if (id === this._areaId) return;
+    this._areaId = id;
+    this._refreshActive();
+  }
+  get areaId() {
+    return this._areaId;
+  }
+
+  // { categories: string[] (empty/undefined = all), tabs: boolean }
+  setView({ categories, tabs } = {}) {
+    const cats = Array.isArray(categories) && categories.length ? categories : null;
+    const useTabs = !!tabs;
+    if (JSON.stringify(cats) === JSON.stringify(this._viewCategories) && useTabs === this._viewTabs) return;
+    this._viewCategories = cats;
+    this._viewTabs = useTabs;
+    if (this._built || this._error) this._build();
   }
 
   connectedCallback() {
@@ -237,8 +263,18 @@ class ScenePresetsMoreInfo extends HTMLElement {
         out.add(id);
       }
     };
-    walk(this._entityId);
-    if (!out.size && this._entityId) out.add(this._entityId);
+    if (this._entityId) {
+      walk(this._entityId);
+      if (!out.size) out.add(this._entityId);
+    } else if (this._areaId && this._hass) {
+      // Lights in the area, directly or via their device.
+      const { entities = {}, devices = {} } = this._hass;
+      for (const [id, ent] of Object.entries(entities)) {
+        if (!id.startsWith("light.") || ent.hidden) continue;
+        const area = ent.area_id ?? devices[ent.device_id]?.area_id;
+        if (area === this._areaId) walk(id);
+      }
+    }
     return [...out];
   }
 
@@ -259,9 +295,10 @@ class ScenePresetsMoreInfo extends HTMLElement {
 
   // --- actions ------------------------------------------------------------
   async _apply(preset) {
-    if (!this._hass || !this._entityId) return;
+    const lights = this._targetLights();
+    if (!this._hass || !lights.length) return;
     const o = this._options;
-    const targets = { entity_id: this._targetLights() };
+    const targets = { entity_id: lights };
     const data = { preset_id: preset.id, targets, transition: o.transition };
     if (o.customBrightness) data.brightness = o.brightness;
 
@@ -322,18 +359,48 @@ class ScenePresetsMoreInfo extends HTMLElement {
     this._stopBtn = stop;
     wrap.appendChild(stop);
 
-    const groups = new Map();
+    let groups = new Map();
     for (const p of this._presets) {
       const name = this._categoryName(p);
+      if (this._viewCategories && !this._viewCategories.includes(name)) continue;
       if (!groups.has(name)) groups.set(name, []);
       groups.get(name).push(p);
+    }
+    // Keep the order the user chose in the editor.
+    if (this._viewCategories) {
+      groups = new Map(
+        this._viewCategories.filter((n) => groups.has(n)).map((n) => [n, groups.get(n)])
+      );
+    }
+
+    const useTabs = this._viewTabs && groups.size > 1;
+    const sections = new Map();
+    if (useTabs) {
+      if (!groups.has(this._tab)) this._tab = groups.keys().next().value;
+      const bar = document.createElement("div");
+      bar.className = "tabs";
+      for (const name of groups.keys()) {
+        const b = document.createElement("button");
+        b.textContent = name;
+        b.addEventListener("click", () => {
+          this._tab = name;
+          for (const [n, s] of sections) s.classList.toggle("hidden", n !== name);
+          for (const t of bar.children) t.toggleAttribute("selected", t === b);
+        });
+        b.toggleAttribute("selected", name === this._tab);
+        bar.appendChild(b);
+      }
+      wrap.appendChild(bar);
     }
 
     this._tiles = new Map();
     for (const [name, presets] of groups) {
       const section = document.createElement("section");
+      sections.set(name, section);
+      if (useTabs && name !== this._tab) section.classList.add("hidden");
       const h = document.createElement("h4");
       h.textContent = name;
+      if (useTabs) h.classList.add("hidden");
       const grid = document.createElement("div");
       grid.className = "grid";
       for (const p of presets) {
@@ -463,8 +530,15 @@ if (!customElements.get("scene-presets-more-info")) {
 
 // --- Lovelace card wrapper -------------------------------------------------
 class ScenePresetsMoreInfoCard extends HTMLElement {
+  static getConfigElement() {
+    return document.createElement("scene-presets-more-info-card-editor");
+  }
+  static getStubConfig(hass) {
+    const light = Object.keys(hass?.states ?? {}).find((id) => id.startsWith("light."));
+    return light ? { entity: light } : {};
+  }
   setConfig(config) {
-    if (!config.entity) throw new Error("`entity` is required");
+    if (!config.entity && !config.area) throw new Error("Set either `entity` (a light) or `area`");
     this._config = config;
     if (!this._el) {
       const card = document.createElement("ha-card");
@@ -473,9 +547,13 @@ class ScenePresetsMoreInfoCard extends HTMLElement {
       card.appendChild(this._el);
       this.appendChild(card);
     }
+    this._el.areaId = config.entity ? undefined : config.area;
     this._el.entityId = config.entity;
+    this._el.setView({ categories: config.categories, tabs: config.tabs });
+    if (this._hass) this._el.hass = this._hass;
   }
   set hass(hass) {
+    this._hass = hass;
     if (this._el) this._el.hass = hass;
   }
   getCardSize() {
@@ -486,11 +564,115 @@ class ScenePresetsMoreInfoCard extends HTMLElement {
 if (!customElements.get("scene-presets-more-info-card")) {
   customElements.define("scene-presets-more-info-card", ScenePresetsMoreInfoCard);
 }
+
+// --- Visual editor ----------------------------------------------------------
+class ScenePresetsMoreInfoCardEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = config;
+    this._render();
+  }
+  set hass(hass) {
+    this._hass = hass;
+    if (this._form) this._form.hass = hass;
+    else this._render();
+  }
+
+  async _loadCategories() {
+    if (this._categoryOptions) return;
+    try {
+      const data = await loadPresetData();
+      const names = new Set();
+      const map = new Map();
+      (Array.isArray(data?.categories) ? data.categories : Object.values(data?.categories || {})).forEach(
+        (c, i) => {
+          if (typeof c === "string") map.set(c, c);
+          else if (c) map.set(String(c.id ?? c.name ?? i), c.name ?? String(c.id ?? i));
+        }
+      );
+      for (const p of data?.presets ?? []) {
+        const raw = p.category ?? p.categoryId ?? p.category_id;
+        names.add(raw == null ? "Other" : map.get(String(raw)) ?? String(raw));
+      }
+      this._categoryOptions = [...names].map((n) => ({ value: n, label: n }));
+    } catch (_) {
+      this._categoryOptions = [];
+    }
+    this._render();
+  }
+
+  _schema() {
+    // `target_type` decides whether the picker shows entity or area; it is editor-only and not saved.
+    return [
+      {
+        name: "target_type",
+        selector: {
+          select: {
+            mode: "box",
+            options: [
+              { value: "entity", label: "Light / light group" },
+              { value: "area", label: "Area" },
+            ],
+          },
+        },
+      },
+      this._targetType() === "area"
+        ? { name: "area", required: true, selector: { area: { entity: { domain: "light" } } } }
+        : { name: "entity", required: true, selector: { entity: { domain: "light" } } },
+      {
+        name: "categories",
+        selector: { select: { multiple: true, mode: "dropdown", options: this._categoryOptions ?? [] } },
+      },
+      { name: "tabs", selector: { boolean: {} } },
+    ];
+  }
+
+  _targetType() {
+    return this._type ?? (this._config?.area && !this._config?.entity ? "area" : "entity");
+  }
+
+  _render() {
+    if (!this._config) return;
+    this._loadCategories();
+    if (!this._form) {
+      this._form = document.createElement("ha-form");
+      this._form.computeLabel = (s) =>
+        ({
+          target_type: "Target",
+          entity: "Light",
+          area: "Area",
+          categories: "Categories (empty = all)",
+          tabs: "Show categories as tabs",
+        })[s.name] ?? s.name;
+      this._form.addEventListener("value-changed", (ev) => {
+        const { target_type, ...value } = ev.detail.value;
+        this._type = target_type;
+        if (target_type === "area") delete value.entity;
+        else delete value.area;
+        if (!value.categories?.length) delete value.categories;
+        if (!value.tabs) delete value.tabs;
+        this._config = { type: this._config.type, ...value };
+        this.dispatchEvent(
+          new CustomEvent("config-changed", { detail: { config: this._config }, bubbles: true, composed: true })
+        );
+        this._render();
+      });
+      this.appendChild(this._form);
+    }
+    this._form.hass = this._hass;
+    this._form.schema = this._schema();
+    this._form.data = { ...this._config, target_type: this._targetType() };
+  }
+}
+
+if (!customElements.get("scene-presets-more-info-card-editor")) {
+  customElements.define("scene-presets-more-info-card-editor", ScenePresetsMoreInfoCardEditor);
+}
+
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "scene-presets-more-info-card",
   name: "Scene Presets (more-info style)",
-  description: "Scene presets for a single light or light group.",
+  description: "Scene presets for a light, light group or area.",
 });
 
 // --- Optional injection into the native light more-info dialog -------------
@@ -542,6 +724,7 @@ if (!window.scenePresetsMoreInfoDisableInject) (() => {
       const el = document.createElement(TAG);
       el.setAttribute(MARK, "");
       el.style.margin = "0 16px";
+      el.setView(window.scenePresetsMoreInfoConfig ?? {});
       el.entityId = entityId;
       el.hass = getHass();
       host.shadowRoot.appendChild(el);

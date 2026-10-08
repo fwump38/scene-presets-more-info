@@ -14,10 +14,18 @@ Once loaded, opening more-info for any `light.*` entity shows the presets below 
 This relies on Home Assistant frontend internals and may need updating after frontend changes. It does nothing if
 the dialog isn't found. To disable it, set `window.scenePresetsMoreInfoDisableInject = true` before the module loads.
 
+To limit categories or use tabs in the dialog, set this before the module loads (e.g. via a small extra module):
+`window.scenePresetsMoreInfoConfig = { categories: ["Relax", "Energize"], tabs: true }`
+
 ## As a card
+Configurable from the visual editor, or in YAML:
+
 ```yaml
 type: custom:scene-presets-more-info-card
-entity: light.living_room
+entity: light.living_room   # a light or light group; or use `area` instead
+# area: living_room         # all lights in the area
+categories: [Relax, Energize]  # optional; omit to show all
+tabs: true                     # optional; one tab per category
 ```
 
 ## Modes
