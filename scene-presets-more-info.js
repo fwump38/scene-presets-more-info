@@ -125,7 +125,12 @@ const STYLE = `
     font: inherit; cursor: pointer;
   }
   .msg { color: var(--sp-muted); padding: 8px 0; }
-  .tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  :host { min-width: 0; max-width: 100%; }
+  .wrap > * { min-width: 0; max-width: 100%; }
+  .tabs {
+    display: flex; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain;
+    scrollbar-width: thin; padding-bottom: 6px; -webkit-overflow-scrolling: touch;
+  }
   .tabs button {
     flex: none; border: none; font: inherit; cursor: pointer; white-space: nowrap;
     padding: 8px 14px; border-radius: 999px;
@@ -390,7 +395,19 @@ class ScenePresetsMoreInfo extends HTMLElement {
         b.toggleAttribute("selected", name === this._tab);
         bar.appendChild(b);
       }
+      // Vertical mouse wheel scrolls the tab bar sideways.
+      bar.addEventListener(
+        "wheel",
+        (ev) => {
+          if (Math.abs(ev.deltaY) > Math.abs(ev.deltaX)) {
+            bar.scrollLeft += ev.deltaY;
+            ev.preventDefault();
+          }
+        },
+        { passive: false }
+      );
       wrap.appendChild(bar);
+      requestAnimationFrame(() => bar.querySelector("[selected]")?.scrollIntoView({ block: "nearest", inline: "center" }));
     }
 
     this._tiles = new Map();
