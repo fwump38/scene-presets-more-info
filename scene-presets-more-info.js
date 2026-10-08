@@ -105,7 +105,7 @@ const STYLE = `
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
   .tile {
     position: relative; aspect-ratio: 1; overflow: hidden; cursor: pointer;
-    border: 2px solid transparent; padding: 0; background: var(--sp-surface);
+    border: none; padding: 0; background: var(--sp-surface);
     border-radius: var(--sp-radius); color: #fff; font: inherit;
   }
   .tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
@@ -114,7 +114,7 @@ const STYLE = `
     font-size: 12px; line-height: 1.2; text-align: center;
     background: linear-gradient(transparent, rgba(0, 0, 0, 0.65));
   }
-  .tile[active] { border-color: var(--primary-color); box-shadow: 0 0 0 2px var(--primary-color); }
+  .tile[active] { box-shadow: 0 0 0 2px var(--primary-color); }
   .tile[active]::after {
     content: "●"; position: absolute; top: 4px; right: 6px; color: var(--primary-color); font-size: 14px;
     text-shadow: 0 0 3px rgba(0, 0, 0, 0.7);
@@ -128,7 +128,7 @@ const STYLE = `
   :host { min-width: 0; max-width: 100%; }
   .wrap > * { min-width: 0; max-width: 100%; }
   /* width:0 + min-width:100% stops the many tabs from widening the card; the row just fills its container. */
-  .tabrow { display: flex; align-items: center; gap: 4px; width: 0; min-width: 100%; }
+  .tabrow { display: flex; align-items: center; gap: 0; width: 0; min-width: 100%; }
   .tabrow .arrow {
     flex: none; width: 32px; height: 32px; border: none; border-radius: 50%; cursor: pointer;
     background: var(--sp-surface); color: var(--primary-text-color); font-size: 20px; line-height: 1; padding: 0;
@@ -136,8 +136,13 @@ const STYLE = `
   .tabs {
     flex: 1; min-width: 0; position: relative;
     display: flex; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain;
-    scrollbar-width: thin; padding-bottom: 6px; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    /* Fade the edges instead of hard-clipping the pills; padding keeps the first/last tab fully visible at rest. */
+    padding: 0 14px;
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent);
+    mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent);
   }
+  .tabs::-webkit-scrollbar { display: none; }
   .tabs button {
     flex: none; border: none; font: inherit; cursor: pointer; white-space: nowrap;
     padding: 8px 14px; border-radius: 999px;
