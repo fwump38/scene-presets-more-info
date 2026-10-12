@@ -6,6 +6,9 @@ built-in light more-info dialog and applied only to the light / light group bein
 Requires the Scene Presets integration to be installed.
 
 ## Install (HACS)
+
+[![Open your Home Assistant instance and open this repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=fwump38&repository=scene-presets-more-info&category=plugin)
+
 1. HACS → ⋮ → **Custom repositories** → add this repository, category **Dashboard**.
 2. Install **Scene Presets More-Info**, then reload the browser (HACS adds the resource automatically).
 
